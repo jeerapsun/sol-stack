@@ -1,0 +1,12 @@
+services:
+  notion_sync:
+    build:
+      context: ./notion_sync
+    volumes:
+      - notion-sync-data:/data
+    restart: unless-stopped
+    depends_on:
+      - llm
+
+volumes:
+  notion-sync-data: {}

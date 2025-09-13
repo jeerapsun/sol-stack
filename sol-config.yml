@@ -1,0 +1,47 @@
+base_dir: ~/apps/sol-stack
+env_file: .env
+ports:
+  agent: 8000
+  n8n: 5678
+hosts:
+  win: studio-win
+  mac: studio-mac
+health_endpoints:
+  agent_local: http://localhost:${ports.agent}/health
+  agent_public: https://agent.solinova.ai/health
+  n8n_local: http://localhost:${ports.n8n}/healthz
+  n8n_public: https://n8n.solinova.ai/healthz
+alerts:
+  email: your@email.com
+mcp:
+  servers_dir: mcp/servers
+  template: claude
+cloudflare:
+  ingress:
+    - hostname: agent.solinova.ai
+      service: http://sol_agent:${ports.agent}
+    - hostname: n8n.solinova.ai
+      service: http://n8n:${ports.n8n}
+    - service: http_status:404
+tailscale:
+  serve_port: 443
+  target_port: ${ports.n8n}
+backup:
+  gpg_key: your_gpg_pubkey
+zep:
+  base_url: https://api.getzep.com
+  project_id: your-project-id
+  endpoints:
+    search: /v1/graph/search
+git:
+  repo: https://github.com/jeerapsun/sol-stack
+  token_env: GITHUB_PAT
+  branch: main
+  auto_pr: true
+langgraph:
+  model: claude-3.5-sonnet
+  state_file: state.json
+n8n:
+  workflows_dir: workflows/
+  input_webhook: /webhook/input
+  output_api: /api/export

@@ -1,0 +1,212 @@
+{
+  "name": "Agent Router - Ollama + OpenRouter",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent-route",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Intent classification logic\nconst text = $input.first().json.text || '';\nconst intents = [];\n\n// Code-related keywords\nif (text.match(/\\b(code|debug|refactor|function|class|variable|bug|error|syntax)\\b/i)) {\n  intents.push('code');\n}\n\n// DevOps keywords  \nif (text.match(/\\b(deploy|docker|kubernetes|infra|pipeline|build|ci\\/cd)\\b/i)) {\n  intents.push('devops');\n}\n\n// Legal/compliance keywords\nif (text.match(/\\b(legal|compliance|gdpr|terms|privacy|contract)\\b/i)) {\n  intents.push('legal');\n}\n\n// Determine routing\nlet route = 'cloud'; // default\nlet confidence = 0.5;\n\nif (intents.includes('code') || intents.includes('devops')) {\n  route = 'local';\n  confidence = 0.8;\n} else if (intents.includes('legal')) {\n  route = 'cloud';\n  confidence = 0.9;\n}\n\nreturn {\n  text: text,\n  intents: intents,\n  route: route,\n  confidence: confidence,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "intent-classifier",
+      "name": "Intent Classifier", 
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.route}}",
+              "value2": "local"
+            }
+          ]
+        }
+      },
+      "id": "route-switch",
+      "name": "Route Switch",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:11434/api/chat",
+        "options": {
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "timeout": 25000
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "{\n  \"model\": \"{{$env.OLLAMA_MODEL}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{{$json.text}}\"\n    }\n  ],\n  \"stream\": false\n}"
+      },
+      "id": "ollama-local",
+      "name": "Ollama Local",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "options": {
+          "headers": {
+            "Authorization": "Bearer {{$env.OPENROUTER_API_KEY}}",
+            "Content-Type": "application/json"
+          }
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "{\n  \"model\": \"{{$env.OPENROUTER_MODEL}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{{$json.text}}\"\n    }\n  ]\n}"
+      },
+      "id": "openrouter-cloud",
+      "name": "OpenRouter Cloud",
+      "type": "n8n-nodes-base.httpRequest", 
+      "typeVersion": 3,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition"
+      },
+      "id": "merge-responses",
+      "name": "Merge Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "{{$env.GSHEET_APPEND_URL}}",
+        "options": {
+          "headers": {
+            "Content-Type": "application/json"
+          }
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "{\n  \"ts\": \"{{$json.timestamp}}\",\n  \"provider\": \"{{$json.route}}\",\n  \"output\": \"{{$json.response}}\",\n  \"route\": \"{{$json.route}}\",\n  \"text\": \"{{$json.text}}\",\n  \"intents\": \"{{$json.intents.join(',')}}\",\n  \"status\": \"ok\"\n}"
+      },
+      "id": "log-to-sheets",
+      "name": "Log to Sheets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{$json.response || 'No response generated'}}"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Intent Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intent Classifier": {
+      "main": [
+        [
+          {
+            "node": "Route Switch",
+            "type": "main", 
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Switch": {
+      "main": [
+        [
+          {
+            "node": "Ollama Local",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "OpenRouter Cloud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Local": {
+      "main": [
+        [
+          {
+            "node": "Merge Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Cloud": {
+      "main": [
+        [
+          {
+            "node": "Merge Responses", 
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Responses": {
+      "main": [
+        [
+          {
+            "node": "Log to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Sheets": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "versionId": "1"
+}

@@ -1,0 +1,73 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Escalate to Cloud Agent",
+      "type": "shell",
+      "command": "curl",
+      "args": [
+        "-X", "POST", "${input:webhook}",
+        "-H", "Content-Type: application/json",
+        "-d", "{\"repo\":\"${workspaceFolder}\",\"branch\":\"${input:branch}\",\"task\":\"${selectedText}\",\"mode\":\"computer_use\"}"
+      ],
+      "problemMatcher": [],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      }
+    },
+    {
+      "label": "Start SOL-Stack",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy", "Bypass",
+        "-File", "${workspaceFolder}/infra/scripts/bootstrap.ps1"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/infra"
+      }
+    },
+    {
+      "label": "Test Brain API",
+      "type": "shell",
+      "command": "curl",
+      "args": [
+        "-s", "http://localhost:8000/health"
+      ],
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "webhook",
+      "type": "promptString",
+      "description": "n8n webhook URL",
+      "default": "${env:N8N_ESCALATE_WEBHOOK}"
+    },
+    {
+      "id": "branch",
+      "type": "promptString",
+      "description": "Git branch",
+      "default": "main"
+    }
+  ]
+}

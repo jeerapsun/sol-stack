@@ -1,0 +1,75 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:16
+    container_name: pg-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports: ["${POSTGRES_PORT}:5432"]
+    volumes:
+      - ${PGDATA_VOLUME}:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports: ["${OLLAMA_PORT}:11434"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports: ["${N8N_PORT}:5678"]
+    environment:
+      - GENERIC_TIMEZONE=Asia/Bangkok
+      - N8N_SECURE_COOKIE=false
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+  brain:
+    build: ./brain
+    container_name: brain
+    restart: unless-stopped
+    ports: ["${FASTAPI_PORT}:8000"]
+    environment:
+      - EMBED_BACKEND=${EMBED_BACKEND}
+      - VECTOR_BACKEND=${VECTOR_BACKEND}
+      - DATA_INBOX=${DATA_INBOX}
+      - FAISS_INDEX_PATH=${FAISS_INDEX_PATH}
+      - ZEP_API_KEY=${ZEP_API_KEY}
+      - ZEP_BASE_URL=${ZEP_BASE_URL}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+    volumes:
+      - brain_data:/app/data
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:ollama
+    container_name: openwebui
+    restart: unless-stopped
+    ports: ["${OPENWEBUI_PORT}:8080"]
+    volumes:
+      - ollama:/root/.ollama
+      - openwebui:/app/backend/data
+    depends_on:
+      - ollama
+
+volumes:
+  n8n_data:
+  openwebui:
+  ollama:
+  pg_data:
+  brain_data:

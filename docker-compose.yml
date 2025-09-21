@@ -1,8 +1,9 @@
 services:
+  # Legacy sol_agent service (kept for compatibility)
   sol_agent:
     build: .
     ports:
-      - "8000:8000"
+      - "8001:8000"  # Changed port to avoid conflict with brain
     restart: unless-stopped
     healthcheck:
       test: ["CMD","python","-c","import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
@@ -10,12 +11,76 @@ services:
       timeout: 3s
       retries: 5
 
+  # New brain service from infra setup
+  brain:
+    build: ./brain
+    container_name: brain
+    restart: unless-stopped
+    ports: 
+      - "${FASTAPI_PORT:-8000}:8000"
+    environment:
+      - EMBED_BACKEND=${EMBED_BACKEND:-bge-m3}
+      - VECTOR_BACKEND=${VECTOR_BACKEND:-faiss}
+      - DATA_INBOX=${DATA_INBOX:-/app/data/inbox}
+      - FAISS_INDEX_PATH=${FAISS_INDEX_PATH:-/app/data/faiss.index}
+      - ZEP_API_KEY=${ZEP_API_KEY}
+      - ZEP_BASE_URL=${ZEP_BASE_URL}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB:-agi_db}
+      - POSTGRES_USER=${POSTGRES_USER:-agi}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-agi_031244585}
+    depends_on:
+      - postgres
+    volumes:
+      - brain_data:/app/data
+
+  postgres:
+    image: postgres:16
+    container_name: pg-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agi_db}
+      POSTGRES_USER: ${POSTGRES_USER:-agi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agi_031244585}
+    ports: 
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports: 
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports: 
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      - GENERIC_TIMEZONE=Asia/Bangkok
+      - N8N_SECURE_COOKIE=false
+    volumes:
+      - n8n_data:/home/node/.n8n
+
   tunnel:
     image: cloudflare/cloudflared:2025.8.1
     command: ["tunnel","--no-autoupdate","run"]
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
     depends_on:
-      sol_agent:
-        condition: service_healthy
+      brain:
+        condition: service_started
     restart: unless-stopped
+
+volumes:
+  n8n_data:
+  ollama_data:
+  pg_data:
+  brain_data:
